@@ -1,0 +1,193 @@
+dataset:
+  name: brazilian_ecommerce
+  owner: analytics_team
+  source: kaggle
+
+tables:
+
+  raw.customers:
+    grain: one row per customer
+    primary_key: customer_id
+
+    columns:
+      customer_id:
+        type: string
+        required: true
+        unique: true
+
+      customer_unique_id:
+        type: string
+        required: true
+        unique: true
+
+      customer_zip_code_prefix:
+        type: int
+        required: true
+        unique: false
+
+      customer_city:
+        type: string
+        required: true
+        unique: false
+
+      customer_state:
+        type: string
+        required: true
+        unique: false
+
+    freshness:
+      expected_hours: 24
+      max_delay_hours: 6
+
+    volume:
+      expected_daily_rows: 5
+      variability_percent: 50
+
+
+  raw.orders:
+    grain: one row per order
+    primary_key: order_id
+
+    columns:
+      order_id:
+        type: string
+        required: true
+        unique: true
+
+      customer_id:
+        type: string
+        required: true
+        unique: false
+        fk: customers.customer_id
+
+      order_status:
+        type: string
+        required: true
+        unique: false
+
+      order_purchase_timestamp:
+        type: datetime
+        required: true
+        unique: false
+
+      order_approved_at:
+        type: datetime
+        required: false
+        unique: false
+
+      order_delivered_carrier_date:
+        type: datetime
+        required: false
+        unique: false
+
+      order_delivered_customer_date:
+        type: datetime
+        required: false
+        unique: false
+
+      order_estimated_delivery_date:
+        type: datetime
+        required: false
+        unique: false
+
+    freshness:
+      expected_minutes: 5
+      max_delay_minutes: 10
+
+    volume:
+      expected_daily_rows: 20
+      variability_percent: 50
+
+
+  raw.order_items:
+    grain: one row per item per order
+    primary_key:
+      - order_id
+      - order_item_id
+
+    columns:
+      order_id:
+        type: string
+        required: true
+        unique: false
+        fk: orders.order_id
+
+      order_item_id:
+        type: int
+        required: true
+        unique: false
+
+      product_id:
+        type: string
+        required: true
+        unique: false
+
+      seller_id:
+        type: string
+        required: true
+        unique: false
+
+      shipping_limit_date:
+        type: datetime
+        required: true
+        unique: false
+
+      price:
+        type: float
+        required: true
+        unique: false
+
+      freight_value:
+        type: float
+        required: true
+        unique: false
+
+    freshness:
+      expected_minutes: 5
+      max_delay_minutes: 10
+
+    volume:
+      expected_daily_rows: 20
+      variability_percent: 50
+
+
+  raw.order_payments:
+    grain: one row per payment per order
+    primary_key:
+      - order_id
+      - payment_sequential
+
+    columns:
+      order_id:
+        type: string
+        required: true
+        unique: false
+        fk: orders.order_id
+
+      payment_sequential:
+        type: int
+        required: true
+        unique: false
+
+      payment_type:
+        type: string
+        required: true
+        unique: false
+
+      payment_installments:
+        type: int
+        required: true
+        unique: false
+
+      payment_value:
+        type: float
+        required: true
+        unique: false
+
+    freshness:
+      expected_minutes: 10
+      max_delay_minutes: 15
+
+    volume:
+      expected_daily_rows: 20
+      variability_percent: 50
