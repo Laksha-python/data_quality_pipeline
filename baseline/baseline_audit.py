@@ -53,7 +53,7 @@ def load_baseline_data(conn):
 
 
 def run_audit(df):
-    print("\n📊 BASELINE SANITY AUDIT\n")
+    print("\n BASELINE SANITY AUDIT\n")
 
     null_rate_df = df[df["metric_name"] == "null_rate"]
     avg_null_rate = null_rate_df["metric_value"].mean()
@@ -96,13 +96,13 @@ def main():
     df = load_baseline_data(conn)
 
     if df.empty:
-        print("❌ No baseline data found. Check baseline construction job.")
+        print(" No baseline data found. Check baseline construction job.")
         return
 
     audit_summary = run_audit(df)
     audit_summary.to_csv("baseline_audit_summary.csv", index=False)
 
-    print("\n✅ baseline_audit_summary.csv generated")
+    print("\n baseline_audit_summary.csv generated")
     conn.close()
 
 

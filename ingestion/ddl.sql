@@ -21,6 +21,14 @@ CREATE TABLE dq.dq_current_stats (
     metric_value TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+CREATE TABLE IF NOT EXISTS dq.dq_numeric_stats (
+    run_date DATE NOT NULL,
+    table_name TEXT NOT NULL,
+    column_name TEXT NOT NULL,
+    metric_name TEXT NOT NULL,   
+    metric_value DOUBLE PRECISION NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
 CREATE TABLE raw.customers (
     customer_id TEXT PRIMARY KEY,
@@ -85,3 +93,13 @@ CREATE TABLE warehouse.orders (
       FOREIGN KEY (customer_id)
       REFERENCES warehouse.customers(customer_id)
 );
+CREATE TABLE IF NOT EXISTS dq.dq_schema_snapshot (
+    snapshot_date DATE NOT NULL,
+    table_name TEXT NOT NULL,
+    column_name TEXT NOT NULL,
+    data_type TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (snapshot_date, table_name, column_name)
+);
+CREATE INDEX IF NOT EXISTS idx_schema_snapshot_table
+ON dq.dq_schema_snapshot (table_name);

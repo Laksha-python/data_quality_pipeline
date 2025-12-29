@@ -123,7 +123,7 @@ def main():
 
     cursor.close()
     conn.close()
-    print("\n30-Day Rolling Baseline Construction Complete ✅")
+    print("\n30-Day Rolling Baseline Construction Complete ")
 
 
 if __name__ == "__main__":
