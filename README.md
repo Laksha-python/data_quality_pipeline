@@ -33,30 +33,51 @@ Docker
 ## Repository Structure
 DQ/
 ├── run_pipeline.py
+
 ├── contract_validator.py
+
 ├── contracts/
+
 ├── registry/
+
 ├── schema/
+
 ├── ingestion/
+
 ├── profiling/
+
 ├── baseline/
+
 ├── drift/
+
 ├── anomaly/
+
 ├── aggregation/
+
 ├── scoring/
+
 ├── root_cause/
+
 ├── alerting/
+
 ├── migrations/
+
 ├── data/
+
 │   └── raw/
+
 └── docker/
 
 ## Prerequisites
 
 Python 3.9+
+
 PostgreSQL
+
 Docker (optional)
+
 Database Setup
+
 -- Create database and apply schema:
 
 psql -d data_quality_db -f migrations/create_all_tables.sql
@@ -66,6 +87,7 @@ dq
 raw
 
 -- Dataset Registration
+
 Each dataset must be registered once.
 
 python registry/dataset_registry.py contracts/data_contract.yaml --dataset orders_pipeline
@@ -76,6 +98,7 @@ python registry/dataset_registry.py contracts/adult_income.yaml --dataset adult_
 This inserts records into dq.dq_datasets and assigns unique dataset_id.
 
 -- Running the Pipeline (Local)
+
 python run_pipeline.py contracts/adult_income.yaml --dataset adult_income
 
 
@@ -90,31 +113,45 @@ Build image
 docker build -t dq-pipeline .
 
 ## Run pipeline
-docker run --rm ^
--e DB_HOST=host.docker.internal ^
--e DB_NAME=data_quality_db ^
--e DB_USER=postgres ^
--e DB_PASSWORD=your_password ^
--e DB_PORT=5432 ^
--v C:\Users\LAKSHA\Downloads\DQ:/app ^
+docker run --rm 
+-e DB_HOST=host.docker.internal 
+-e DB_NAME=data_quality_db 
+-e DB_USER=postgres 
+-e DB_PASSWORD=your_password 
+-e DB_PORT=5432 
+-v C:\Users\LAKSHA\Downloads\DQ:/app 
 dq-pipeline contracts/adult_income.yaml --dataset adult_income
 
 ## Pipeline Execution Order
 
 Contract validation
+
 Schema generation
+
 Data ingestion
+
 Schema drift detection
+
 Profiling
+
 Baseline construction
+
 Baseline audit
+
 Comparison engine
+
 Distribution drift detection
+
 Referential drift detection
+
 Anomaly detection
+
 Aggregation
+
 Scoring
+
 Root cause analysis
+
 Alerting
 
 Each step is logged in dq.dq_run_history.
@@ -133,6 +170,7 @@ dq_root_causes
 ## Example Output
 
 DQ Score computed | dataset_id=2 | score=50 | status=CRITICAL | top_issue=schema
+
 ALERT TRIGGERED
 Run Date     : 2026-01-08
 DQ Score     : 50 (CRITICAL)
@@ -140,9 +178,12 @@ Top Issue    : schema
 
 ## Notes
 
-Pipeline is idempotent
-Each dataset is fully isolated via dataset_id
-Backfills and reruns are supported
+Pipeline is idempotent.
+
+Each dataset is fully isolated via dataset_id.
+
+Backfills and reruns are supported.
+
 CSV ingestion assumes files exist under data/raw/<dataset_name>/
 
 ## License
