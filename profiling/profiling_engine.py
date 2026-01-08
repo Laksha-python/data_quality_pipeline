@@ -1,90 +1,129 @@
+import os
+import sys
 import yaml
 import psycopg2
-import pandas as pd
 from datetime import date
-from math import sqrt
-import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+DATASET_ID = os.getenv("DATASET_ID")
+if not DATASET_ID:
+    raise RuntimeError("DATASET_ID not set")
+DATASET_ID = int(DATASET_ID)
+
+RUN_DATE = date.fromisoformat(
+    os.getenv("RUN_DATE", str(date.today()))
+)
 
 DB_CONFIG = {
-    "host": os.getenv("DB_HOST", "localhost"),
     "dbname": os.getenv("DB_NAME", "data_quality_db"),
     "user": os.getenv("DB_USER", "postgres"),
     "password": os.getenv("DB_PASSWORD"),
-    "port": int(os.getenv("DB_PORT", 5432))
+    "host": os.getenv("DB_HOST", "localhost"),
+    "port": os.getenv("DB_PORT", "5432"),
 }
 
+TABLE_LEVEL_COL = "__table__"  
 
-DATA_CONTRACT_PATH = "contracts/data_contract.yaml"
+def resolve_dataset_id(conn):
+    dataset_name = os.getenv("DATASET_NAME")
+    if not dataset_name:
+        raise RuntimeError("DATASET_NAME not set")
+
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT dataset_id FROM dq.dq_datasets WHERE dataset_name = %s",
+            (dataset_name,)
+        )
+        row = cur.fetchone()
+        if not row:
+            raise RuntimeError(f"Dataset not registered: {dataset_name}")
+        return row[0]
 
 
-def insert_metric(cursor, table_name, column_name, metric_name, metric_value):
-    if metric_value is None:
-        return
+def get_connection():
+    return psycopg2.connect(**DB_CONFIG)
 
-    if hasattr(metric_value, "item"):
-        metric_value = metric_value.item()
 
-    cursor.execute(
-        """
+def load_contract():
+    contract_path = sys.argv[1] if len(sys.argv) > 1 else os.getenv("DATA_CONTRACT")
+
+    if not contract_path:
+        print("Usage: python profiling_engine.py <contract_path>")
+        sys.exit(1)
+
+    with open(contract_path, "r", encoding="utf-8") as f:
+        return yaml.safe_load(f)
+
+
+def profile_table(conn, table_name, columns):
+    cur = conn.cursor()
+    DATASET_ID=resolve_dataset_id(conn)
+
+    cur.execute(f"SELECT COUNT(*) FROM {table_name}")
+    record_count = cur.fetchone()[0]
+
+    cur.execute("""
         INSERT INTO dq.dq_current_stats
-        (run_date, table_name, column_name, metric_name, metric_value)
-        VALUES (CURRENT_DATE, %s, %s, %s, %s)
-        """,
-        (table_name, column_name, metric_name, str(metric_value))
-    )
+        (
+            run_date,
+            dataset_id,
+            table_name,
+            column_name,
+            metric_name,
+            metric_value,
+            created_at
+        )
+        VALUES (%s,%s,%s,%s,'record_count',%s,NOW())
+        ON CONFLICT DO NOTHING
+    """, (
+        RUN_DATE,
+        DATASET_ID,
+        table_name,
+        TABLE_LEVEL_COL,  
+        record_count
+    ))
 
+    for column in columns:
+        cur.execute(
+            f"SELECT COUNT(*) FROM {table_name} WHERE {column} IS NULL"
+        )
+        null_count = cur.fetchone()[0]
+        null_rate = (null_count / record_count) if record_count else 0.0
 
-
-def profile_table(table_name, table_contract, conn):
-    schema, table = table_name.split(".")
-    df = pd.read_sql(f"SELECT * FROM {schema}.{table}", conn)
-    cursor = conn.cursor()
-    record_count = len(df)
-
-
-    insert_metric(cursor, table_name, None, "record_count", record_count)
-
-    for col_name, col_props in table_contract["columns"].items():
-        col_type = col_props["type"]
-        series = df[col_name]
-
-        null_count = series.isna().sum()
-        null_rate = null_count / record_count if record_count > 0 else 0
-
-        insert_metric(cursor, table_name, col_name, "null_count", null_count)
-        insert_metric(cursor, table_name, col_name, "null_rate", null_rate)
-
-        if col_type in ["int", "float"]:
-            non_null = series.dropna()
-
-            if len(non_null) > 0:
-                mean = non_null.mean()
-                std_dev = sqrt(((non_null - mean) ** 2).mean())
-
-                insert_metric(cursor, table_name, col_name, "min", non_null.min())
-                insert_metric(cursor, table_name, col_name, "max", non_null.max())
-                insert_metric(cursor, table_name, col_name, "mean", mean)
-                insert_metric(cursor, table_name, col_name, "std_dev", std_dev)
-
-        elif col_type in ["date", "datetime"]:
-            non_null = series.dropna()
-            if len(non_null) > 0:
-                insert_metric(cursor, table_name, col_name, "min", non_null.min())
-                insert_metric(cursor, table_name, col_name, "max", non_null.max())
+        cur.execute("""
+            INSERT INTO dq.dq_current_stats
+            (
+                run_date,
+                dataset_id,
+                table_name,
+                column_name,
+                metric_name,
+                metric_value,
+                created_at
+            )
+            VALUES
+                (%s,%s,%s,%s,'null_count',%s,NOW()),
+                (%s,%s,%s,%s,'null_rate',%s,NOW())
+            ON CONFLICT DO NOTHING
+        """, (
+            RUN_DATE, DATASET_ID, table_name, column, null_count,
+            RUN_DATE, DATASET_ID, table_name, column, null_rate
+        ))
 
     conn.commit()
-    cursor.close()
+    cur.close()
 
 
 def main():
-    with open(DATA_CONTRACT_PATH, "r") as f:
-        contract = yaml.safe_load(f)
+    contract = load_contract()
+    conn = get_connection()
 
-    conn = psycopg2.connect(**DB_CONFIG)
-
-    for table_name, table_contract in contract["tables"].items():
+    for table_name, table_spec in contract["tables"].items():
         print(f"Profiling {table_name}...")
-        profile_table(table_name, table_contract, conn)
+        columns = list(table_spec.get("columns", {}).keys())
+        profile_table(conn, table_name, columns)
 
     conn.close()
     print("Profiling complete.")

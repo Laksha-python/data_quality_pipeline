@@ -12,66 +12,75 @@ DB_CONFIG = {
     "port": int(os.getenv("DB_PORT", 5432))
 }
 
-
 SCHEMA_RAW = "raw"
-WINDOW_DAYS = 30  
+WINDOW_DAYS = 30
 
-def load_contract(path=None):
-    if path is None:
-        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        path = os.path.join(base_dir, "contracts", "data_contract.yaml")
+def load_contract():
+    contract_path = os.getenv("DATA_CONTRACT")
+    if not contract_path:
+        raise RuntimeError("DATA_CONTRACT not set")
 
-    with open(path, "r") as f:
-        return yaml.safe_load(f)
+    with open(contract_path, encoding="utf-8") as f:
+        contract = yaml.safe_load(f)
+
+    if not contract or "tables" not in contract:
+        raise RuntimeError("Invalid contract")
+
+    return contract
 
 
-def enforce_rolling_window(cursor, table_name, column_name, metric_name, window_end):
-    cutoff_date = window_end - timedelta(days=WINDOW_DAYS - 1)
-    cursor.execute(
-        """
+def enforce_rolling_window(cur, table_name, column_name, metric_name, window_end):
+    cutoff = window_end - timedelta(days=WINDOW_DAYS - 1)
+    cur.execute("""
         DELETE FROM dq.dq_baseline_stats
         WHERE table_name = %s
           AND column_name = %s
           AND metric_name = %s
-          AND window_end::date < %s
-        """,
-        (table_name, column_name, metric_name, cutoff_date)
-    )
+          AND window_end < %s
+    """, (table_name, column_name, metric_name, cutoff))
 
 
-def insert_baseline(cursor, table_name, column_name, metric_name, metric_value, window_start, window_end):
+def insert_baseline(cursor, table_name, column_name,
+                    metric_name, metric_value,
+                    window_start, window_end):
+
     if metric_value is None:
         return
-    if hasattr(metric_value, "item"):
-        metric_value = metric_value.item()
-    metric_value = str(metric_value)
-    
-    cursor.execute(
-        """
+
+    if hasattr(metric_value, "isoformat"):
+        metric_value = metric_value.isoformat()
+    else:
+        metric_value = str(metric_value)
+
+    cursor.execute("""
         INSERT INTO dq.dq_baseline_stats
         (table_name, column_name, metric_name, metric_value, window_start, window_end)
         VALUES (%s, %s, %s, %s, %s, %s)
-        """,
-        (table_name, column_name, metric_name, metric_value, window_start, window_end)
-    )
+        ON CONFLICT DO NOTHING
+    """, (
+        table_name,
+        column_name,
+        metric_name,
+        metric_value,
+        window_start,
+        window_end
+    ))
 
 
-
-def profile_table(cursor, conn, table_name, columns, day):
-    full_table_name = f"{SCHEMA_RAW}.{table_name}" if "." not in table_name else table_name
-    df = pd.read_sql(f"SELECT * FROM {full_table_name}", conn)
+def profile_table(cur, conn, table_name, columns, day):
+    df = pd.read_sql(f"SELECT * FROM {table_name}", conn)
     if df.empty:
-        print(f"WARNING: {full_table_name} is empty on {day.date()}")
+        print(f"WARNING: {table_name} empty")
         return
 
     window_end = day.date()
     window_start = (day - timedelta(days=WINDOW_DAYS - 1)).date()
 
-    for col_name, col_type in columns.items():
-        if col_name not in df.columns:
+    for col, col_type in columns.items():
+        if col not in df.columns:
             continue
 
-        series = df[col_name]
+        series = df[col]
         non_null = series.dropna()
 
         metrics = {
@@ -80,7 +89,7 @@ def profile_table(cursor, conn, table_name, columns, day):
             "null_rate": series.isna().mean()
         }
 
-        if col_type.lower() in ["int", "float"] and not non_null.empty:
+        if col_type in {"int", "float"} and not non_null.empty:
             metrics.update({
                 "min": non_null.min(),
                 "max": non_null.max(),
@@ -88,42 +97,44 @@ def profile_table(cursor, conn, table_name, columns, day):
                 "std_dev": non_null.std()
             })
 
-        if col_type.lower() in ["date", "datetime"] and not non_null.empty:
+        if col_type == "timestamp" and not non_null.empty:
             metrics.update({
                 "min": non_null.min(),
                 "max": non_null.max()
             })
 
+        for m in metrics:
+            enforce_rolling_window(cur, table_name, col, m, window_end)
 
-        for metric_name in metrics:
-            enforce_rolling_window(cursor, full_table_name, col_name, metric_name, window_end)
-
-        for metric_name, metric_value in metrics.items():
-            insert_baseline(cursor, full_table_name, col_name, metric_name,
-                            metric_value, window_start, window_end)
+        for m, v in metrics.items():
+            insert_baseline(cur, table_name, col, m, v, window_start, window_end)
 
 
 def main():
     contract = load_contract()
     conn = psycopg2.connect(**DB_CONFIG)
-    cursor = conn.cursor()
+    cur = conn.cursor()
 
     start_date = datetime.today() - timedelta(days=WINDOW_DAYS)
 
-    for day_offset in range(1, WINDOW_DAYS + 1):
-        day = start_date + timedelta(days=day_offset)
-        print(f"\nProcessing Day {day_offset}/{WINDOW_DAYS}: {day.date()}")
+    for i in range(1, WINDOW_DAYS + 1):
+        day = start_date + timedelta(days=i)
+        print(f"\nProcessing Day {i}/{WINDOW_DAYS}: {day.date()}")
 
         for table_name, table_contract in contract["tables"].items():
-            columns = {col: str(col_props["type"]).lower()
-                       for col, col_props in table_contract.get("columns", {}).items()}
-            profile_table(cursor, conn, table_name, columns, day)
+            cols = {
+                c: str(v.get("type", "string")).lower()
+                for c, v in table_contract["columns"].items()
+            }
+
+            full_table = table_name if "." in table_name else f"{SCHEMA_RAW}.{table_name}"
+            profile_table(cur, conn, full_table, cols, day)
 
         conn.commit()
 
-    cursor.close()
+    cur.close()
     conn.close()
-    print("\n30-Day Rolling Baseline Construction Complete ")
+    print("\n30-Day Rolling Baseline Construction Complete")
 
 
 if __name__ == "__main__":

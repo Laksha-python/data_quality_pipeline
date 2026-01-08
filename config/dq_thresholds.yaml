@@ -1,0 +1,25 @@
+scoring:
+  base_score: 100
+
+dimensions:
+  completeness:
+    weight: 25
+  distribution:
+    weight: 20
+  volume:
+    weight: 15
+  freshness:
+    weight: 20
+  schema:
+    weight: 10
+  referential:
+    weight: 10
+
+severity_penalty:
+  LOW: 2
+  MEDIUM: 5
+  HIGH: 12
+
+alerts:
+  critical_score: 70
+  warning_score: 85

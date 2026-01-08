@@ -6,8 +6,9 @@ sys.path.append(str(ROOT))
 import psycopg2
 import os
 from datetime import date
-
-RUN_DATE = date.today()
+RUN_DATE = date.fromisoformat(
+    os.getenv("RUN_DATE", str(date.today()))
+)
 SOURCE_SCHEMA = "raw"
 
 DB_CONFIG = {
@@ -17,6 +18,7 @@ DB_CONFIG = {
     "host": os.getenv("DB_HOST","localhost"),
     "port": os.getenv("DB_PORT", "5432")
 }
+DATASET_ID = int(os.getenv("DATASET_ID", 1))
 
 def get_conn():
     return psycopg2.connect(**DB_CONFIG)
@@ -47,28 +49,34 @@ def load_current_schema(conn):
         return {(r[0], r[1]): r[2] for r in cur.fetchall()}
 
 def insert_anomaly(conn, table, column, severity):
-    """
-    Schema drift is categorical → store numeric fields as NULL
-    """
     query = """
         INSERT INTO dq.dq_anomalies (
             run_date,
+            dataset_id,
             table_name,
             column_name,
             dimension,
-            observed_value,
-            expected_value,
-            deviation_percent,
-            z_score,
             severity,
             status,
             created_at
         )
-        VALUES (%s,%s,%s,'schema',NULL,NULL,NULL,NULL,%s,'OPEN',NOW())
+        VALUES (%s,%s,%s,%s,%s,%s,'OPEN',NOW())
         ON CONFLICT DO NOTHING;
     """
     with conn.cursor() as cur:
-        cur.execute(query, (RUN_DATE, table, column, severity))
+        cur.execute(
+            query,
+            (
+                RUN_DATE,
+                DATASET_ID,
+                table,
+                column,
+                "schema",
+                severity
+            )
+        )
+    conn.commit()
+
 
 def detect_schema_drift():
     conn = get_conn()

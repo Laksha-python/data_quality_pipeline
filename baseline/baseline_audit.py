@@ -43,8 +43,6 @@ def load_baseline_data(conn):
     """
 
     df = pd.read_sql(query, conn, params=(cutoff_date,))
-
-    # Convert only truly numeric values
     df["metric_value"] = pd.to_numeric(df["metric_value"], errors="coerce")
     df = df.dropna(subset=["metric_value"])
 

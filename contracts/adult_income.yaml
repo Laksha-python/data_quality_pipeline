@@ -1,0 +1,110 @@
+tables:
+
+  raw.adult_income:
+    description: one row per individual census record
+    grain: one row per person
+    primary_key:
+      - age
+      - fnlwgt
+
+    source:
+      type: csv
+      path: data/raw/adult_income/adult.csv
+
+    columns:
+      age:
+        type: int
+        semantic_type: quantity
+        required: true
+        unique: false
+
+      workclass:
+        type: string
+        semantic_type: category
+        required: false
+        unique: false
+
+      fnlwgt:
+        type: int
+        semantic_type: quantity
+        required: true
+        unique: false
+
+      education:
+        type: string
+        semantic_type: category
+        required: false
+        unique: false
+
+      education_num:
+        type: int
+        semantic_type: quantity
+        required: false
+        unique: false
+
+      marital_status:
+        type: string
+        semantic_type: category
+        required: false
+        unique: false
+
+      occupation:
+        type: string
+        semantic_type: category
+        required: false
+        unique: false
+
+      relationship:
+        type: string
+        semantic_type: category
+        required: false
+        unique: false
+
+      race:
+        type: string
+        semantic_type: category
+        required: false
+        unique: false
+
+      sex:
+        type: string
+        semantic_type: category
+        required: false
+        unique: false
+
+      capital_gain:
+        type: int
+        semantic_type: quantity
+        required: false
+        unique: false
+
+      capital_loss:
+        type: int
+        semantic_type: quantity
+        required: false
+        unique: false
+
+      hours_per_week:
+        type: int
+        semantic_type: quantity
+        required: false
+        unique: false
+
+      native_country:
+        type: string
+        semantic_type: category
+        required: false
+        unique: false
+
+      income:
+        type: string
+        semantic_type: category
+        required: true
+        unique: false
+
+    freshness:
+      enabled: false
+
+    volume:
+      expected_daily_rows: 1000
+      variability_percent: 20

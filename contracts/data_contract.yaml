@@ -1,41 +1,64 @@
-dataset:
-  name: brazilian_ecommerce
-  owner: analytics_team
-  source: kaggle
+contract_version: 1.0
+
+meta:
+  dataset:
+    name: orders_pipeline
+    owner: your_team
+    description: Brazilian ecommerce dataset
+
+defaults:
+  timezone: UTC
+  date_formats:
+    - "%Y-%m-%d"
+    - "%Y-%m-%d %H:%M:%S"
+
+auto_infer: false
 
 tables:
 
   raw.customers:
+    description: one row per customer
     grain: one row per customer
-    primary_key: customer_id
+    primary_key:
+      - customer_id
+
+    source:
+      type: csv
+      path: data/raw/orders_pipeline/customers.csv
 
     columns:
       customer_id:
         type: string
+        semantic_type: id
         required: true
         unique: true
 
       customer_unique_id:
         type: string
+        semantic_type: id
         required: true
         unique: true
 
       customer_zip_code_prefix:
         type: int
-        required: true
+        semantic_type: category
+        required: false
         unique: false
 
       customer_city:
         type: string
-        required: true
+        semantic_type: category
+        required: false
         unique: false
 
       customer_state:
         type: string
-        required: true
+        semantic_type: category
+        required: false
         unique: false
 
     freshness:
+      timestamp_column: customer_unique_id   # best available proxy
       expected_hours: 24
       max_delay_hours: 6
 
@@ -45,52 +68,49 @@ tables:
 
 
   raw.orders:
+    description: one row per order
     grain: one row per order
-    primary_key: order_id
+    primary_key:
+      - order_id
+
+    source:
+      type: csv
+      path: data/raw/orders_pipeline/orders.csv
 
     columns:
       order_id:
         type: string
+        semantic_type: id
         required: true
         unique: true
 
       customer_id:
         type: string
+        semantic_type: id
         required: true
         unique: false
-        fk: customers.customer_id
+        fk: raw.customers.customer_id
 
       order_status:
         type: string
+        semantic_type: category
         required: true
         unique: false
 
       order_purchase_timestamp:
-        type: datetime
+        type: timestamp
+        semantic_type: timestamp
         required: true
         unique: false
 
-      order_approved_at:
-        type: datetime
-        required: false
-        unique: false
-
-      order_delivered_carrier_date:
-        type: datetime
-        required: false
-        unique: false
-
       order_delivered_customer_date:
-        type: datetime
-        required: false
-        unique: false
-
-      order_estimated_delivery_date:
-        type: datetime
+        type: timestamp
+        semantic_type: timestamp
         required: false
         unique: false
 
     freshness:
+      timestamp_column: order_purchase_timestamp
       expected_minutes: 5
       max_delay_minutes: 10
 
@@ -100,94 +120,106 @@ tables:
 
 
   raw.order_items:
-    grain: one row per item per order
+    description: one row per order item
+    grain: one row per order per item
     primary_key:
       - order_id
       - order_item_id
 
+    source:
+      type: csv
+      path: data/raw/orders_pipeline/order_items.csv
+
     columns:
       order_id:
         type: string
+        semantic_type: id
         required: true
         unique: false
-        fk: orders.order_id
+        fk: raw.orders.order_id
 
       order_item_id:
         type: int
+        semantic_type: id
         required: true
         unique: false
 
       product_id:
         type: string
-        required: true
-        unique: false
-
-      seller_id:
-        type: string
-        required: true
-        unique: false
-
-      shipping_limit_date:
-        type: datetime
+        semantic_type: id
         required: true
         unique: false
 
       price:
         type: float
+        semantic_type: currency
         required: true
         unique: false
 
       freight_value:
         type: float
-        required: true
+        semantic_type: currency
+        required: false
         unique: false
 
     freshness:
-      expected_minutes: 5
-      max_delay_minutes: 10
+      timestamp_column: order_id   # no timestamp → proxy
+      expected_hours: 24
+      max_delay_hours: 12
 
     volume:
-      expected_daily_rows: 20
-      variability_percent: 50
+      expected_daily_rows: 50
+      variability_percent: 60
 
 
   raw.order_payments:
-    grain: one row per payment per order
+    description: one row per payment
+    grain: one row per order per payment
     primary_key:
       - order_id
       - payment_sequential
 
+    source:
+      type: csv
+      path: data/raw/orders_pipeline/order_payments.csv
+
     columns:
       order_id:
         type: string
+        semantic_type: id
         required: true
         unique: false
-        fk: orders.order_id
+        fk: raw.orders.order_id
 
       payment_sequential:
         type: int
+        semantic_type: id
         required: true
         unique: false
 
       payment_type:
         type: string
+        semantic_type: category
         required: true
         unique: false
 
       payment_installments:
         type: int
-        required: true
+        semantic_type: quantity
+        required: false
         unique: false
 
       payment_value:
         type: float
+        semantic_type: currency
         required: true
         unique: false
 
     freshness:
-      expected_minutes: 10
-      max_delay_minutes: 15
+      timestamp_column: order_id   # proxy
+      expected_hours: 24
+      max_delay_hours: 12
 
     volume:
-      expected_daily_rows: 20
+      expected_daily_rows: 30
       variability_percent: 50
